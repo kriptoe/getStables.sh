@@ -43,7 +43,6 @@ get_arbiscan_usdc_balance() {
     
     echo "🌉 Fetching Arbitrum Bridge USDC Balance..."
     
-    # Make API request and handle response
     local response=$(curl -s "$api_url")
     
     if [ $? -ne 0 ]; then
@@ -52,24 +51,19 @@ get_arbiscan_usdc_balance() {
         return
     fi
     
-    # Parse JSON response using basic tools
     local status=$(echo "$response" | grep -o '"status":"[^"]*"' | cut -d'"' -f4)
     local result=$(echo "$response" | grep -o '"result":"[^"]*"' | cut -d'"' -f4)
     
     if [ "$status" = "1" ] && [ -n "$result" ]; then
-        # Get balance in wei
         local balance_wei="$result"
-        # Remove last 6 digits from balance_wei
         local balance_truncated="${balance_wei:0:-6}"
         [[ -z "$balance_truncated" ]] && balance_truncated=0
-        # Format for display
         local balance_formatted=$(format_number "$balance_truncated")
         
         echo "Asset: Bridge USDC (Arbitrum)"
         echo "Balance: $balance_formatted USDC"
         echo "------------------------"
         
-        # Set bridge_balance to truncated value
         bridge_balance="$balance_truncated"
     else
         echo "❌ Error: Failed to parse Arbiscan response or API returned error"
@@ -80,7 +74,7 @@ get_arbiscan_usdc_balance() {
 }
 
 # Initialize totals
-raw_total=0
+usdc_total=0
 bridge_balance=0
 
 # Get total supply for a contract
@@ -104,10 +98,8 @@ get_total_supply() {
         return
     fi
     
-    # Clean total_supply by removing whitespace and scientific notation
     total_supply=$(echo "$total_supply" | tr -d '[:space:]' | sed 's/\[.*\]//')
     
-    # Handle hexadecimal or decimal output
     if [[ "$total_supply" =~ ^0x ]]; then
         total_supply_integer=$(echo "ibase=16; $(echo "$total_supply" | tr '[:lower:]' '[:upper:]' | cut -c3-)" | bc)
     else
@@ -115,28 +107,24 @@ get_total_supply() {
     fi
     [[ -z "$total_supply_integer" ]] && total_supply_integer=0
     
-    # Verify total_supply_integer is numeric
     if [[ ! "$total_supply_integer" =~ ^[0-9]+$ ]]; then
         echo "❌ Error: Invalid total_supply_integer: $total_supply_integer"
         echo "------------------------"
         return
     fi
     
-    formatted_raw=$(format_number "$total_supply_integer")
-    
-    # Add to running raw total
-    raw_total=$(echo "$raw_total + $total_supply_integer" | bc)
-    
     echo "✅ Asset: $name"
     if [ "$contract" = "0xb8ce59fc3717ada4c02eadf9682a9e934f625ebb" ] || [ "$contract" = "0xb50A96253aBDF803D85efcDce07Ad8becBc52BD5" ]; then
         truncated_6digits="${total_supply_integer:0:-6}"
         [[ -z "$truncated_6digits" ]] && truncated_6digits=0
         formatted_truncated_6digits=$(format_number "$truncated_6digits")
+        usdc_total=$(echo "$usdc_total + $truncated_6digits" | bc)
         echo " USDC Value: $formatted_truncated_6digits"
     else
         truncated_18digits="${total_supply_integer:0:-18}"
         [[ -z "$truncated_18digits" ]] && truncated_18digits=0
         formatted_truncated_18digits=$(format_number "$truncated_18digits")
+        usdc_total=$(echo "$usdc_total + $truncated_18digits" | bc)
         echo " USDC Value: $formatted_truncated_18digits"
     fi
     echo "------------------------"
@@ -175,12 +163,9 @@ for contract in "${CONTRACTS[@]}"; do
     get_total_supply "$contract"
 done
 
-# Debug grand total inputs
-echo "DEBUG: raw_total=$raw_total, bridge_balance=$bridge_balance"
-
 # Calculate grand total including bridge
-grand_total=$(echo "$raw_total + $bridge_balance" | bc)
-formatted_total=$(format_number "$raw_total")
+grand_total=$(echo "$usdc_total + $bridge_balance" | bc)
+formatted_usdc_total=$(format_number "$usdc_total")
 formatted_bridge=$(format_number "$bridge_balance")
 formatted_grand_total=$(format_number "$grand_total")
 
@@ -188,6 +173,6 @@ formatted_grand_total=$(format_number "$grand_total")
 echo ""
 echo "📊 SUMMARY:"
 echo "==========="
-echo "💰 Total Supply (Hyperliquid Assets): $formatted_total tokens"
-echo "🌉 Bridge Balance (Arbitrum USDC): $formatted_bridge tokens"
-echo "🎯 Grand Total: $formatted_grand_total tokens"
+echo "💰 Total Supply (Hyperliquid Assets): $formatted_usdc_total USDC"
+echo "🌉 Bridge Balance (Arbitrum USDC): $formatted_bridge USDC"
+echo "🎯 Grand Total: $formatted_grand_total USDC"
